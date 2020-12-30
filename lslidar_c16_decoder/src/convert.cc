@@ -77,7 +77,10 @@ namespace lslidar_c16_decoder {
         double angle_base = M_PI * 2 / point_num;
 
         scan->header.frame_id = scan_frame_id;
-        scan->header.stamp = sweepData->header.stamp;  // timestamp will obtained from sweep data stamp
+        if (time_synchronization_)
+            scan->header.stamp = sweepData->header.stamp;  // timestamp will obtained from sweep data stamp
+        else
+            scan->header.stamp = ros::Time::now();
 
         scan->angle_min = 0;
         scan->angle_max = 2 * M_PI;
