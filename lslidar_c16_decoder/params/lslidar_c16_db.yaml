@@ -1,0 +1,18 @@
+lasers:
+- {vert_correction: -15}    #Channel 0
+- {vert_correction: 1}      #Channel 1
+- {vert_correction: -13}    #Channel 2
+- {vert_correction: 3}      #Channel 3
+- {vert_correction: -11}    #Channel 4
+- {vert_correction: 5}      #Channel 5
+- {vert_correction: -9}     #Channel 6
+- {vert_correction: 7}      #Channel 7
+- {vert_correction: -7}     #Channel 8
+- {vert_correction: 9}      #Channel 9
+- {vert_correction: -5}     #Channel 10
+- {vert_correction: 11}     #Channel 11
+- {vert_correction: -3}     #Channel 12
+- {vert_correction: 13}     #Channel 13
+- {vert_correction: -1}     #Channel 14
+- {vert_correction: 15}     #Channel 15
+
