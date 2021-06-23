@@ -20,67 +20,67 @@
 #include <yaml-cpp/yaml.h>
 
 namespace lslidar_rawdata {
-    RawData::RawData() {
+    RawData::RawData(rclcpp::Node::SharedPtr private_nh) : private_nh_(private_nh){
         this->is_init_angle_ = false;
         this->is_init_curve_ = false;
         this->is_init_top_fw_ = false;
     }
 
 
-    void RawData::loadConfigFile(ros::NodeHandle node, ros::NodeHandle private_nh) {
+    void RawData::loadConfigFile() {
         std::string model;
         std::string resolution_param;
 
-        private_nh.param("start_angle", start_angle_, float(0));
-        private_nh.param("end_angle", end_angle_, float(360));
-        private_nh.param("distance_unit", distance_unit_, float(0.25));
-        private_nh.param("calibration_file", calibration_file_, std::string(""));
-        private_nh.param("scan_start_angle", scan_start_angle_, float(0.0));
-        private_nh.param("scan_end_angle", scan_end_angle_, float(36000.0));
-        private_nh.param("rpm", rpm_, 300);
+        start_angle_ = private_nh_->declare_parameter("start_angle", float(0));
+        end_angle_ = private_nh_->declare_parameter("end_angle", float(360));
+        distance_unit_ = private_nh_->declare_parameter("distance_unit", float(0.25));
+        calibration_file_ = private_nh_->declare_parameter("calibration_file", std::string(""));
+        scan_start_angle_ = private_nh_->declare_parameter("scan_start_angle", float(0.0));
+        scan_end_angle_ = private_nh_->declare_parameter("scan_end_angle", float(36000.0));
+        rpm_ = private_nh_->declare_parameter("rpm", 300);
 
 
         if (start_angle_ < 0 || start_angle_ > 360 || end_angle_ < 0 || end_angle_ > 360) {
             start_angle_ = 0;
             end_angle_ = 360;
 
-            ROS_INFO_STREAM("start angle and end angle select feature deactivated.");
+            RCLCPP_INFO_STREAM(private_nh_->get_logger(), "start angle and end angle select feature deactivated.");
         } else {
-            ROS_INFO_STREAM("start angle and end angle select feature activated.");
+            RCLCPP_INFO_STREAM(private_nh_->get_logger(), "start angle and end angle select feature activated.");
         }
 
         angle_flag_ = true;
         if (start_angle_ > end_angle_) {
             angle_flag_ = false;
-            ROS_INFO_STREAM("Start angle is smaller than end angle, not the normal state!");
+            RCLCPP_INFO_STREAM(private_nh_->get_logger(), "Start angle is smaller than end angle, not the normal state!");
         }
-        ROS_INFO_STREAM(
+        RCLCPP_INFO_STREAM(private_nh_->get_logger(),
                 "start_angle: " << start_angle_ << " end_angle: " << end_angle_ << " angle_flag: " << angle_flag_);
 
         start_angle_ = start_angle_ / 180 * M_PI;
         end_angle_ = end_angle_ / 180 * M_PI;
 
-        private_nh.param("max_range", max_distance_, 150.0f);
-        private_nh.param("min_range", min_distance_, 0.15f);
-        private_nh.param("cbMethod", cbMethod_, true);
-        private_nh.param("return_mode", return_mode_, 1);
-        private_nh.param("config_vert", config_vert_, true);
-        private_nh.param("print_vert", print_vert_, true);
-        private_nh.param("config_vert_file", config_vert_file_, false);
-        private_nh.param("degree_mode", degree_mode_, 1);
-        ROS_INFO_STREAM("distance threshlod, max: " << max_distance_ << ", min: " << min_distance_);
-        ROS_INFO_STREAM("return mode : " << return_mode_);
+        max_distance_ = private_nh_->declare_parameter("max_range", 150.0f);
+        min_distance_ = private_nh_->declare_parameter("min_range", 0.15f);
+        cbMethod_ = private_nh_->declare_parameter("cbMethod", true);
+        return_mode_ = private_nh_->declare_parameter("return_mode", 1);
+        config_vert_ = private_nh_->declare_parameter("config_vert", true);
+        print_vert_ = private_nh_->declare_parameter("print_vert", true);
+        config_vert_file_ = private_nh_->declare_parameter("config_vert_file", false);
+        degree_mode_ = private_nh_->declare_parameter("degree_mode", 1);
+        RCLCPP_INFO_STREAM(private_nh_->get_logger(), "distance threshlod, max: " << max_distance_ << ", min: " << min_distance_);
+        RCLCPP_INFO_STREAM(private_nh_->get_logger(), "return mode : " << return_mode_);
         if(2 == degree_mode_){
-            ROS_INFO_STREAM("vertical angle resolution: 2 degree");
+            RCLCPP_INFO_STREAM(private_nh_->get_logger(), "vertical angle resolution: 2 degree");
         }else if(1 == degree_mode_){
-            ROS_INFO_STREAM("vertical angle resolution: 1.33 degree");
+            RCLCPP_INFO_STREAM(private_nh_->get_logger(), "vertical angle resolution: 1.33 degree");
         }
 
         intensity_mode_ = 1;
         info_print_flag_ = false;
         config_vert_angle = false;
 
-        private_nh.param("model", model, std::string("LSC16"));
+        model = private_nh_->declare_parameter("model", std::string("LSC16"));
         numOfLasers = 16;
         R1_ = 0.04376;   //calibration
         R2_ = 0.010875;
@@ -130,10 +130,11 @@ namespace lslidar_rawdata {
         // receive difop data
         // subscribe to difop lslidar packets, if not right correct data in difop, it will not revise the correct data in the
         // VERT_ANGLE, HORI_ANGLE etc.
-        difop_sub_ = node.subscribe("lslidar_packet_difop", 10, &RawData::processDifop, (RawData *) this);
+        difop_sub_ = private_nh_->create_subscription<lslidar_c16_msgs::msg::LslidarC16Packet>(
+            "lslidar_packet_difop", rclcpp::QoS(10), std::bind(&RawData::processDifop, this, std::placeholders::_1));
     }
 
-    void RawData::processDifop(const lslidar_c16_msgs::LslidarC16Packet::ConstPtr &difop_msg) {
+    void RawData::processDifop(const lslidar_c16_msgs::msg::LslidarC16Packet::ConstPtr difop_msg) {
         // std::cout << "Enter difop callback!" << std::endl;
         const uint8_t *data = &difop_msg->data[0];
         bool is_support_dual_return = false;
@@ -237,8 +238,8 @@ namespace lslidar_rawdata {
  *  @param pc shared pointer to point cloud (points are appended)
  */
     void
-    RawData::unpack(const lslidar_c16_msgs::LslidarC16Packet &pkt, VPointCloud::Ptr pointcloud, int Packet_num,
-                    lslidar_c16_msgs::LslidarC16SweepPtr &sweep_data) {
+    RawData::unpack(const lslidar_c16_msgs::msg::LslidarC16Packet &pkt, VPointCloud::Ptr pointcloud, int Packet_num,
+                    lslidar_c16_msgs::msg::LslidarC16Sweep::SharedPtr &sweep_data) {
         float azimuth;  // 0.01 dgree
         float intensity;
         float azimuth_diff;
@@ -251,7 +252,7 @@ namespace lslidar_rawdata {
                 sin_scan_altitude_caliration[i] = std::sin(scan_altitude[i]);
 
                 if (print_vert_) {
-                    ROS_INFO("Channel %d Data  %f", i, scan_altitude[i] * RAD_TO_DEG);
+                    RCLCPP_INFO(private_nh_->get_logger(), "Channel %d Data  %f", i, scan_altitude[i] * RAD_TO_DEG);
                 }
             }
             config_vert_angle = false;
@@ -261,7 +262,7 @@ namespace lslidar_rawdata {
         for (int block = 0; block < BLOCKS_PER_PACKET; block++, this->block_num++)  // 1 packet:12 data blocks
         {
             if (UPPER_BANK != raw->blocks[block].header) {
-                ROS_INFO_STREAM_THROTTLE(180, "skipping LSLIDAR DIFOP packet");
+                RCLCPP_INFO_STREAM(private_nh_->get_logger(), "skipping LSLIDAR DIFOP packet");
                 break;
             }
             azimuth = (float) (256 * raw->blocks[block].rotation_2 + raw->blocks[block].rotation_1);
@@ -363,8 +364,8 @@ namespace lslidar_rawdata {
 
                         pointcloud->at(2 * this->block_num + firing, dsr) = point;
 
-                        sweep_data->scans[dsr].points.push_back(lslidar_c16_msgs::LslidarC16Point());
-                        lslidar_c16_msgs::LslidarC16Point &new_point = sweep_data->scans[dsr].points[
+                        sweep_data->scans[dsr].points.push_back(lslidar_c16_msgs::msg::LslidarC16Point());
+                        lslidar_c16_msgs::msg::LslidarC16Point &new_point = sweep_data->scans[dsr].points[
                                 sweep_data->scans[dsr].points.size() - 1];
                         // Pack the data into point msg
                         new_point.x = point.x;

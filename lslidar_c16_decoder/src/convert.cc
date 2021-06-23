@@ -24,52 +24,53 @@ namespace lslidar_c16_decoder {
     std::string model;
 
 /** @brief Constructor. */
-    Convert::Convert(ros::NodeHandle node, ros::NodeHandle private_nh) : data_(new lslidar_rawdata::RawData()) {
+    Convert::Convert(const rclcpp::NodeOptions & options)
+      : rclcpp::Node("lslidar_decoder_node", options) {
         scan_nums = 0;
         scan_start = true;
 
-        data_->loadConfigFile(node, private_nh);  // load lidar parameters
-        private_nh.param("model", model, std::string("LSC16"));
+        data_ = std::make_shared<lslidar_rawdata::RawData>(shared_from_this());
+        data_->loadConfigFile();  // load lidar parameters
+        model = this->declare_parameter("model", std::string("LSC16"));
 
         // advertise output point cloud (before subscribing to input data)
         std::string output_points_topic;
-        private_nh.param("output_points_topic", output_points_topic, std::string("lslidar_point_cloud"));
-        output_ = node.advertise<sensor_msgs::PointCloud2>(output_points_topic, 10);
-
-        scan_pub = node.advertise<sensor_msgs::LaserScan>("scan", 100);
+        output_points_topic = this->declare_parameter("output_points_topic", std::string("lslidar_point_cloud"));
+        output_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(output_points_topic, 10);
+        scan_pub = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", 100);
 
         // subscribe to lslidar packets
         std::string input_packets_topic;
-        private_nh.param("input_packets_topic", input_packets_topic, std::string("lslidar_packet"));
-        packet_sub_ = node.subscribe(input_packets_topic, 10, &Convert::processScan, (Convert *) this,
-                                     ros::TransportHints().tcpNoDelay(true));
+        input_packets_topic = this->declare_parameter("input_packets_topic", std::string("lslidar_packet"));
+        packet_sub_ = this->create_subscription<lslidar_c16_msgs::msg::LslidarC16ScanUnified>(
+            input_packets_topic, rclcpp::QoS(10), std::bind(&Convert::processScan, this, std::placeholders::_1));
 
-        private_nh.param("time_synchronization", time_synchronization_, false);
-        private_nh.param("scan_num", scan_num, 8);
-        private_nh.param("publish_scan", publish_scan, false);
-        private_nh.param("scan_frame_id", scan_frame_id, std::string("laser_link"));
+        time_synchronization_ = this->declare_parameter("time_synchronization", false);
+        scan_num = this->declare_parameter("scan_num", 8);
+        publish_scan = this->declare_parameter("publish_scan", false);
+        scan_frame_id = this->declare_parameter("scan_frame_id", std::string("laser_link"));
         if (scan_num < 0) {
             scan_num = 0;
-            ROS_WARN("channel_num_ outside of the index, select channel 0 instead!");
+            RCLCPP_WARN(this->get_logger(), "channel_num_ outside of the index, select channel 0 instead!");
         } else if (scan_num > 15) {
             scan_num = 15;
-            ROS_WARN("channel_num_ outside of the index, select channel 15 instead!");
+            RCLCPP_WARN(this->get_logger(), "channel_num_ outside of the index, select channel 15 instead!");
         }
-        ROS_INFO("select scan_num: %d", scan_num);
+        RCLCPP_INFO(this->get_logger(), "select scan_num: %d", scan_num);
 
         if (time_synchronization_) {
-            sync_sub_ = node.subscribe("sync_header", 10, &Convert::timeSync, (Convert *) this,
-                                       ros::TransportHints().tcpNoDelay(true));
+            sync_sub_ = this->create_subscription<sensor_msgs::msg::TimeReference>(
+                "sync_header", rclcpp::QoS(10), std::bind(&Convert::timeSync, this, std::placeholders::_1));
         }
     }
 
-    void Convert::timeSync(const sensor_msgs::TimeReferenceConstPtr &time_msg) {
+    void Convert::timeSync(const sensor_msgs::msg::TimeReference::ConstPtr time_msg) {
         global_time = time_msg->header.stamp;
     }
 
 
-    void Convert::publishScan(lslidar_c16_msgs::LslidarC16SweepPtr &sweepData, int scanNum) {
-        sensor_msgs::LaserScan::Ptr scan(new sensor_msgs::LaserScan);
+    void Convert::publishScan(lslidar_c16_msgs::msg::LslidarC16Sweep::SharedPtr sweepData, int scanNum) {
+        sensor_msgs::msg::LaserScan::SharedPtr scan(new sensor_msgs::msg::LaserScan());
         if (sweepData->scans[scanNum].points.size() <= 1)
             return;
 
@@ -80,7 +81,7 @@ namespace lslidar_c16_decoder {
         if (time_synchronization_)
             scan->header.stamp = sweepData->header.stamp;  // timestamp will obtained from sweep data stamp
         else
-            scan->header.stamp = ros::Time::now();
+            scan->header.stamp = this->now();
 
         scan->angle_min = 0;
         scan->angle_max = 2 * M_PI;
@@ -105,19 +106,19 @@ namespace lslidar_c16_decoder {
 
             scan->intensities[point_num - 1 - point_idx] = sweepData->scans[scanNum].points[i].intensity;
         }
-        scan_pub.publish(scan);
+        scan_pub->publish(std::move(*scan));
     }
 
 
 /** @brief Callback for raw scan messages. */
-    void Convert::processScan(const lslidar_c16_msgs::LslidarC16ScanUnified::ConstPtr &scanMsg) {
+    void Convert::processScan(const lslidar_c16_msgs::msg::LslidarC16ScanUnified::ConstPtr scanMsg) {
         lslidar_rawdata::VPointCloud::Ptr outPoints(new lslidar_rawdata::VPointCloud);
-        sweep_data = lslidar_c16_msgs::LslidarC16SweepPtr(new lslidar_c16_msgs::LslidarC16Sweep());
+        sweep_data = lslidar_c16_msgs::msg::LslidarC16Sweep::SharedPtr(new lslidar_c16_msgs::msg::LslidarC16Sweep());
 
         if (time_synchronization_)
             outPoints->header.stamp = pcl_conversions::toPCL(scanMsg->header).stamp;
         else {
-            outPoints->header.stamp = ros::Time::now().toNSec() / 1000ull;
+            outPoints->header.stamp = this->now().nanoseconds() / 1000ull;
         }
 
         outPoints->header.frame_id = scanMsg->header.frame_id;
@@ -136,11 +137,15 @@ namespace lslidar_c16_decoder {
             data_->unpack(scanMsg->packets[i], outPoints, i, sweep_data);
         }
 
-        sensor_msgs::PointCloud2 outMsg;
+        sensor_msgs::msg::PointCloud2 outMsg;
         pcl::toROSMsg(*outPoints, outMsg);
-        output_.publish(outMsg);
+        output_->publish(std::move(outMsg));
 
         if (publish_scan){publishScan(sweep_data, scan_num);}
 
     }
 }  // namespace lslidar_c16_decoder
+
+#include <rclcpp_components/register_node_macro.hpp>
+
+RCLCPP_COMPONENTS_REGISTER_NODE(lslidar_c16_decoder::Convert)

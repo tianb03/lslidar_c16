@@ -19,18 +19,15 @@
 #define _LS_C16_DRIVER_H_
 
 #include <string>
-#include <ros/ros.h>
-#include <ros/package.h>
-#include <std_msgs/Int32.h>
-#include <pcl/point_types.h>
-#include <pcl_ros/impl/transforms.hpp>
-#include <pcl_conversions/pcl_conversions.h>
+#include <diagnostic_updater/diagnostic_updater.hpp>
+#include <diagnostic_updater/publisher.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include "input.h"
-#include <lslidar_c16_msgs/LslidarC16ScanUnified.h>
+#include <lslidar_c16_msgs/msg/lslidar_c16_scan_unified.hpp>
 
 namespace lslidar_c16_driver
 {
-class lslidarDriver
+class lslidarDriver final : public rclcpp::Node
 {
 public:
   /**
@@ -38,15 +35,20 @@ public:
  * @param node          raw packet output topic
  * @param private_nh    通过这个节点传参数
  */
-  lslidarDriver(ros::NodeHandle node, ros::NodeHandle private_nh);
+  explicit lslidarDriver(const rclcpp::NodeOptions & options);
+  ~lslidarDriver() override;
+  lslidarDriver(lslidarDriver && c) = delete;
+  lslidarDriver & operator=(lslidarDriver && c) = delete;
+  lslidarDriver(const lslidarDriver & c) = delete;
+  lslidarDriver & operator=(const lslidarDriver & c) = delete;
 
-  ~lslidarDriver();
   bool poll(void);
-  void difopPoll(void);
 
 private:
+  void difopPoll(void);
+  void pollThread();
   /// Callback for skip num for time synchronization
-  void skipNumCallback(const std_msgs::Int32::ConstPtr& skip_num);
+  // void skipNumCallback(const std_msgs::Int32::ConstPtr& skip_num);
 
   // configuration parameters
   struct
@@ -60,13 +62,13 @@ private:
     int return_mode;     //return wave number
   } config_;
 
-  boost::shared_ptr<Input> msop_input_;
-  boost::shared_ptr<Input> difop_input_;
-  ros::Publisher msop_output_;
-  ros::Publisher difop_output_;
-  ros::Publisher output_sync_;
+  std::unique_ptr<Input> msop_input_;
+  std::unique_ptr<Input> difop_input_;
+  rclcpp::Publisher<lslidar_c16_msgs::msg::LslidarC16ScanUnified>::SharedPtr msop_output_;
+  rclcpp::Publisher<lslidar_c16_msgs::msg::LslidarC16Packet>::SharedPtr difop_output_;
+  rclcpp::Publisher<sensor_msgs::msg::TimeReference>::SharedPtr output_sync_;
   // Converter convtor_
-  boost::shared_ptr<boost::thread> difop_thread_;
+  std::unique_ptr<std::thread> difop_thread_;
 
   // add for time synchronization
   bool time_synchronization_;
@@ -77,16 +79,18 @@ private:
   uint64_t last_FPGA_ts;
   uint64_t GPS_ts;
   int cnt_gps_ts;
-  ros::Time timeStamp;
+  rclcpp::Time timeStamp;
   uint64_t usec_start;
 
   bool scan_fill;
-  lslidar_c16_msgs::LslidarC16ScanUnifiedPtr scan_start;
+  std::unique_ptr<lslidar_c16_msgs::msg::LslidarC16ScanUnified> scan_start;
 
-
+  // We use this future/promise pair to notify threads that we are shutting down
+  std::shared_future<void> future_;
+  std::promise<void> exit_signal_;
 
 };
 
-}  // namespace lslidar_driver
+}  // namespace lslidar_c16_driver
 
-#endif
+#endif  // _LS_C16_DRIVER_H_

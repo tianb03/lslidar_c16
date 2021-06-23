@@ -1,25 +1,25 @@
-<package>
-
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format2.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="2">
   <name>lslidar_c16</name>
   <version>1.2.0</version>
   <description>
     Basic ROS support for the Leishen C16 LIDARs.
   </description>
 
-  <url>http://www.ros.org/wiki/lslidar_c16</url>
   <maintainer email="yutongyan@lslidar.com">Yutong</maintainer>
+  <maintainer email="lzs_1993@qq.com">ZhenshengLee</maintainer>
   <author>Yutong</author>
   <license>GNU General Public License V3.0</license>
+  <url type="website">http://www.ros.org/wiki/lslidar_c16</url>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <run_depend>lslidar_c16_driver</run_depend>
-  <run_depend>lslidar_c16_msgs</run_depend>
-  <run_depend>lslidar_c16_decoder</run_depend>
-  <run_depend>lslidar_c16_sys</run_depend>
+  <exec_depend>lslidar_c16_driver</exec_depend>
+  <exec_depend>lslidar_c16_msgs</exec_depend>
+  <exec_depend>lslidar_c16_decoder</exec_depend>
 
   <export>
-    <metapackage/>
+    <build_type>ament_cmake</build_type>
   </export>
-
 </package>

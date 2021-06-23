@@ -21,7 +21,7 @@
 extern volatile sig_atomic_t flag;
 namespace lslidar_c16_driver
 {
-static const size_t packet_size = sizeof(lslidar_c16_msgs::LslidarC16Packet().data);
+static const size_t packet_size = sizeof(lslidar_c16_msgs::msg::LslidarC16Packet().data);
 ////////////////////////////////////////////////////////////////////////
 // Input base class implementation
 ////////////////////////////////////////////////////////////////////////
@@ -31,15 +31,18 @@ static const size_t packet_size = sizeof(lslidar_c16_msgs::LslidarC16Packet().da
  *  @param private_nh ROS private handle for calling node.
  *  @param port UDP port number.
  */
-Input::Input(ros::NodeHandle private_nh, uint16_t port) : private_nh_(private_nh), port_(port)
+Input::Input(rclcpp::Node* private_nh, uint16_t port) : private_nh_(private_nh), port_(port)
 {
   npkt_update_flag_ = false;
   cur_rpm_ = 0;
   return_mode_ = 1;
 
-  private_nh.param("device_ip", devip_str_, std::string(""));
-  if (!devip_str_.empty())
-    ROS_INFO_STREAM("Only accepting packets from IP address: " << devip_str_);
+  devip_str_ = private_nh->declare_parameter("device_ip", std::string(""));
+  if (!devip_str_.empty()) {
+    RCLCPP_INFO(
+      private_nh->get_logger(),
+      "Only accepting packets from IP address: %s", devip_str_.c_str());
+  }
 }
 
 int Input::getRpm(void)
@@ -70,7 +73,7 @@ void Input::clearUpdateFlag(void)
    *  @param private_nh ROS private handle for calling node.
    *  @param port UDP port number
 */
-InputSocket::InputSocket(ros::NodeHandle private_nh, uint16_t port) : Input(private_nh, port)
+InputSocket::InputSocket(rclcpp::Node* private_nh, uint16_t port) : Input(private_nh, port)
 {
   sockfd_ = -1;
 
@@ -79,18 +82,18 @@ InputSocket::InputSocket(ros::NodeHandle private_nh, uint16_t port) : Input(priv
     inet_aton(devip_str_.c_str(), &devip_);
   }
 
-  ROS_INFO_STREAM("Opening UDP socket: port " << port);
+  RCLCPP_INFO(private_nh->get_logger(), "Opening UDP socket: port %u", port);
   sockfd_ = socket(PF_INET, SOCK_DGRAM, 0);
   if (sockfd_ == -1)
   {
-    perror("socket");  // TODO: ROS_ERROR errno
+    RCLCPP_ERROR(private_nh->get_logger(), "Error opening socket: %s", ::strerror(errno));
     return;
   }
 
   int opt = 1;
   if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, (const void*)&opt, sizeof(opt)))
   {
-    perror("setsockopt error!\n");
+    RCLCPP_ERROR(private_nh->get_logger(), "Error setsockopt socket: %s", ::strerror(errno));
     return;
   }
 
@@ -102,15 +105,19 @@ InputSocket::InputSocket(ros::NodeHandle private_nh, uint16_t port) : Input(priv
 
   if (bind(sockfd_, (sockaddr*)&my_addr, sizeof(sockaddr)) == -1)
   {
-    perror("bind");  // TODO: ROS_ERROR errno
+    RCLCPP_ERROR(private_nh->get_logger(), "Error binding to socket: %s", ::strerror(errno));
     return;
   }
 
   if (fcntl(sockfd_, F_SETFL, O_NONBLOCK | FASYNC) < 0)
   {
-    perror("non-block");
+    RCLCPP_ERROR(
+      private_nh->get_logger(),
+      "Error setting socket to non-blocking: %s", ::strerror(errno));
     return;
   }
+
+  RCLCPP_DEBUG(private_nh->get_logger(), "LslidarC16 socket fd is %d\n", sockfd_);
 }
 
 /** @brief destructor */
@@ -120,9 +127,10 @@ InputSocket::~InputSocket(void)
 }
 
 /** @brief Get one lslidar packet. */
-int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double time_offset)
+int InputSocket::getPacket(lslidar_c16_msgs::msg::LslidarC16Packet* pkt, const double time_offset)
 {
-  double time1 = ros::Time::now().toSec();
+  rclcpp::Time time1;
+
   struct pollfd fds[1];
   fds[0].fd = sockfd_;
   fds[0].events = POLLIN;
@@ -142,7 +150,7 @@ int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double
       if (retval < 0)  // poll() error?
       {
         if (errno != EINTR)
-          ROS_ERROR("poll() error: %s", strerror(errno));
+          RCLCPP_ERROR(private_nh_->get_logger(), "poll() error: %s", ::strerror(errno));
         return 1;
       }
       if (retval == 0)  // poll() timeout?
@@ -153,7 +161,7 @@ int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double
         sprintf(bufTime,"%d-%d-%d %d:%d:%d", curTm->tm_year+1900, curTm->tm_mon+1,
                 curTm->tm_mday, curTm->tm_hour, curTm->tm_min, curTm->tm_sec);
 
-        ROS_WARN_THROTTLE(2, "%s  lslidar poll() timeout", bufTime);
+        RCLCPP_WARN(private_nh_->get_logger(), "LslidarC16 poll() timeout: %s", bufTime);
         /*
         char buffer_data[8] = "re-con";
         memset(&sender_address, 0, sender_address_len);          // initialize to zeros
@@ -166,7 +174,7 @@ int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double
       }
       if ((fds[0].revents & POLLERR) || (fds[0].revents & POLLHUP) || (fds[0].revents & POLLNVAL))  // device error?
       {
-        ROS_ERROR("poll() reports lslidar error");
+        RCLCPP_ERROR(private_nh_->get_logger(), "poll() reports LslidarC16 error");
         return 1;
       }
     } while ((fds[0].revents & POLLIN) == 0);
@@ -177,7 +185,7 @@ int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double
       if (errno != EWOULDBLOCK)
       {
         perror("recvfail");
-        ROS_INFO("recvfail");
+        RCLCPP_ERROR(private_nh_->get_logger(), "recvfail: %s", ::strerror(errno));
         return 1;
       }
     }
@@ -189,7 +197,9 @@ int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double
         break;  // done
     }
 
-    ROS_DEBUG_STREAM("incomplete lslidar packet read: " << nbytes << " bytes");
+    RCLCPP_DEBUG(
+      private_nh_->get_logger(),
+      "incomplete LslidarC16 packet read: %zd bytes", nbytes);
   }
   if (flag == 0)
   {
@@ -222,8 +232,8 @@ int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double
 
   // Average the times at which we begin and end reading.  Use that to
   // estimate when the scan occurred. Add the time offset.
-  double time2 = ros::Time::now().toSec();
-  pkt->stamp = ros::Time((time2 + time1) / 2.0 + time_offset);
+  rclcpp::Time time2 = private_nh_->get_clock()->now();
+  pkt->stamp = rclcpp::Time((time2.nanoseconds() + time1.nanoseconds()) / 2.0 + time_offset);
 
   return 0;
 }
@@ -239,7 +249,7 @@ int InputSocket::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double
    *  @param packet_rate expected device packet frequency (Hz)
    *  @param filename PCAP dump file name
    */
-InputPCAP::InputPCAP(ros::NodeHandle private_nh, uint16_t port, double packet_rate, std::string filename,
+InputPCAP::InputPCAP(rclcpp::Node* private_nh, uint16_t port, double packet_rate, std::string filename,
                      bool read_once, bool read_fast, double repeat_delay)
   : Input(private_nh, port), packet_rate_(packet_rate), filename_(filename)
 {
@@ -247,23 +257,24 @@ InputPCAP::InputPCAP(ros::NodeHandle private_nh, uint16_t port, double packet_ra
   empty_ = true;
 
   // get parameters using private node handle
-  private_nh.param("read_once", read_once_, false);
-  private_nh.param("read_fast", read_fast_, false);
-  private_nh.param("repeat_delay", repeat_delay_, 0.0);
+  bool read_once_ = private_nh->declare_parameter("read_once", false);
+  bool read_fast_ = private_nh->declare_parameter("read_fast", false);
+  double repeat_delay_ = private_nh->declare_parameter("repeat_delay", 0.0);
 
   if (read_once_)
-    ROS_INFO("Read input file only once.");
+    RCLCPP_INFO(private_nh->get_logger(), "Read input file only once.");
   if (read_fast_)
-    ROS_INFO("Read input file as quickly as possible.");
+    RCLCPP_INFO(private_nh->get_logger(), "Read input file as quickly as possible.");
   if (repeat_delay_ > 0.0)
-    ROS_INFO("Delay %.3f seconds before repeating input file.", repeat_delay_);
+    RCLCPP_INFO(
+      private_nh->get_logger(), "Delay %.3f seconds before repeating input file.",
+      repeat_delay_);
 
   // Open the PCAP dump file
-  // ROS_INFO("Opening PCAP file \"%s\"", filename_.c_str());
-  ROS_INFO_STREAM("Opening PCAP file " << filename_);
+  RCLCPP_INFO(private_nh->get_logger(), "Opening PCAP file \"%s\"", filename_.c_str());
   if ((pcap_ = pcap_open_offline(filename_.c_str(), errbuf_)) == NULL)
   {
-    ROS_FATAL("Error opening lslidar socket dump file.");
+    RCLCPP_FATAL(private_nh->get_logger(), "Error opening LslidarC16 socket dump file.");
     return;
   }
 
@@ -283,7 +294,7 @@ InputPCAP::~InputPCAP(void)
 }
 
 /** @brief Get one lslidar packet. */
-int InputPCAP::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double time_offset)
+int InputPCAP::getPacket(lslidar_c16_msgs::msg::LslidarC16Packet* pkt, const double time_offset)
 {
   struct pcap_pkthdr* header;
   const u_char* pkt_data;
@@ -329,7 +340,7 @@ int InputPCAP::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double t
         }
       }
 
-      pkt->stamp = ros::Time::now();  // time_offset not considered here, as no
+      pkt->stamp = private_nh_->get_clock()->now();  // time_offset not considered here, as no
                                       // synchronization required
       empty_ = false;
       return 0;  // success
@@ -337,23 +348,27 @@ int InputPCAP::getPacket(lslidar_c16_msgs::LslidarC16Packet* pkt, const double t
 
     if (empty_)  // no data in file?
     {
-      ROS_WARN("Error %d reading lslidar packet: %s", res, pcap_geterr(pcap_));
+      RCLCPP_WARN(
+        private_nh_->get_logger(), "Error %d reading Velodyne packet: %s",
+        res, pcap_geterr(pcap_));
       return -1;
     }
 
     if (read_once_)
     {
-      ROS_INFO("end of file reached -- done reading.");
+      RCLCPP_INFO(private_nh_->get_logger(), "end of file reached -- done reading.");
       return -1;
     }
 
     if (repeat_delay_ > 0.0)
     {
-      ROS_INFO("end of file reached -- delaying %.3f seconds.", repeat_delay_);
+      RCLCPP_INFO(
+        private_nh_->get_logger(), "end of file reached -- delaying %.3f seconds.",
+        repeat_delay_);
       usleep(rint(repeat_delay_ * 1000000.0));
     }
 
-    ROS_DEBUG("replaying lslidar dump file");
+    RCLCPP_DEBUG(private_nh_->get_logger(), "replaying LslidarC16 dump file");
 
     // I can't figure out how to rewind the file, because it
     // starts with some kind of header.  So, close the file

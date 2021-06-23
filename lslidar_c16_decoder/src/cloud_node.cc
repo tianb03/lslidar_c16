@@ -15,20 +15,24 @@
  * along with the driver.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "rclcpp/rclcpp.hpp"
 #include "lslidar_c16_decoder/convert.h"
 
 /** Main node entry point. */
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "lslidar_decoder_node");
-  ros::NodeHandle node;
-  ros::NodeHandle priv_nh("~");
+  // Force flush of the stdout buffer.
+  setvbuf(stdout, nullptr, _IONBF, BUFSIZ);
+
+  rclcpp::init(argc, argv);
 
   // create conversion class, which subscribes to raw data
-  lslidar_c16_decoder::Convert conv(node, priv_nh);
+  rclcpp::spin(
+    std::make_shared<lslidar_c16_decoder::Convert>(
+      rclcpp::NodeOptions()));
 
   // handle callbacks until shut down
-  ros::spin();
+  rclcpp::shutdown();
 
   return 0;
 }
