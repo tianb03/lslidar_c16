@@ -15,9 +15,8 @@
  * along with the driver.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 #include "lslidar_c16_driver/lslidar_c16_driver.h"
-#include "std_msgs/String.h"
 
 using namespace lslidar_c16_driver;
 volatile sig_atomic_t flag = 1;
@@ -29,19 +28,17 @@ static void my_handler(int sig)
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "lslidar_c16_driver");
-  ros::NodeHandle node;
-  ros::NodeHandle private_nh("~");
+  rclcpp::init(argc, argv);
 
   signal(SIGINT, my_handler);
 
   // start the driver
-  lslidar_c16_driver::lslidarDriver dvr(node, private_nh);
+  auto dvr = std::make_shared<lslidar_c16_driver::lslidarDriver>(rclcpp::NodeOptions());
 
   // loop until shut down or end of file
-  while (ros::ok() && dvr.poll())
+  while(rclcpp::ok() && dvr->poll())
   {
-    ros::spinOnce();
+    rclcpp::spin_some(dvr);
   }
 
   return 0;

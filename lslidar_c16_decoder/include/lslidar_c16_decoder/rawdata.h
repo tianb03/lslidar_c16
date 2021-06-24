@@ -18,15 +18,11 @@
 #ifndef _RAWDATA_H
 #define _RAWDATA_H
 
-#include <ros/ros.h>
-#include <ros/package.h>
-#include <lslidar_c16_msgs/LslidarC16Packet.h>
-#include <lslidar_c16_msgs/LslidarC16ScanUnified.h>
-#include <lslidar_c16_msgs/LslidarC16Sweep.h>
-#include "std_msgs/String.h"
-#include <pcl/point_types.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl_ros/impl/transforms.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <lslidar_c16_msgs/msg/lslidar_c16_packet.hpp>
+#include <lslidar_c16_msgs/msg/lslidar_c16_scan_unified.hpp>
+#include <lslidar_c16_msgs/msg/lslidar_c16_sweep.hpp>
+#include "std_msgs/msg/string.hpp"
 #include <pcl_conversions/pcl_conversions.h>
 #include <stdio.h>
 
@@ -119,7 +115,7 @@ namespace lslidar_rawdata {
             -0.01160643952576229,0.17453292519943295
     };
 
-    double scan_altitude[16];
+    static double scan_altitude[16];
 
     static const double cos_scan_altitude[16] = {
             std::cos(scan_altitude[0]), std::cos(scan_altitude[1]),
@@ -176,20 +172,20 @@ namespace lslidar_rawdata {
 /** \brief lslidar data conversion class */
     class RawData {
     public:
-        RawData();
+        RawData(rclcpp::Node::SharedPtr private_nh);
 
         ~RawData() {
         }
 
         /*load the cablibrated files: angle, distance, intensity*/
-        void loadConfigFile(ros::NodeHandle node, ros::NodeHandle private_nh);
+        void loadConfigFile();
 
         /*unpack the UDP packet and opuput PCL PointXYZI type*/
-        void unpack(const lslidar_c16_msgs::LslidarC16Packet &pkt, VPointCloud::Ptr pointcloud,int Packet_num,lslidar_c16_msgs::LslidarC16SweepPtr& sweep_data);
+        void unpack(const lslidar_c16_msgs::msg::LslidarC16Packet &pkt, VPointCloud::Ptr pointcloud,int Packet_num,lslidar_c16_msgs::msg::LslidarC16Sweep::SharedPtr& sweep_data);
 
-        void processDifop(const lslidar_c16_msgs::LslidarC16Packet::ConstPtr &difop_msg);
+        void processDifop(const lslidar_c16_msgs::msg::LslidarC16Packet::ConstPtr difop_msg);
 
-        ros::Subscriber difop_sub_;
+        rclcpp::Subscription<lslidar_c16_msgs::msg::LslidarC16Packet>::SharedPtr difop_sub_;
         bool is_init_curve_;
         bool is_init_angle_;
         bool is_init_top_fw_;
@@ -227,24 +223,26 @@ namespace lslidar_rawdata {
         double vert_angle;
         double cos_scan_altitude_caliration[LSC16_SCANS_PER_FIRING];
         double sin_scan_altitude_caliration[LSC16_SCANS_PER_FIRING];
+
+        rclcpp::Node::SharedPtr private_nh_;
     };
 
-    float sin_azimuth_table[ROTATION_MAX_UNITS];
-    float cos_azimuth_table[ROTATION_MAX_UNITS];
+    static float sin_azimuth_table[ROTATION_MAX_UNITS];
+    static float cos_azimuth_table[ROTATION_MAX_UNITS];
 
 
-    float VERT_ANGLE[32];
-    float HORI_ANGLE[32];
-    float aIntensityCal[7][32];
-    float aIntensityCal_old[1600][32];
-    bool Curvesis_new = true;
-    int g_ChannelNum[32][51];
-    float CurvesRate[32];
+    static float VERT_ANGLE[32];
+    static float HORI_ANGLE[32];
+    static float aIntensityCal[7][32];
+    static float aIntensityCal_old[1600][32];
+    static const bool Curvesis_new = true;
+    static int g_ChannelNum[32][51];
+    static float CurvesRate[32];
 
-    float temper = 31.0;
-    int tempPacketNum = 0;
-    int numOfLasers = 16;
-    int TEMPERATURE_RANGE = 40;
+    static const float temper = 31.0;
+    static const int tempPacketNum = 0;
+    static int numOfLasers = 16;
+    static const int TEMPERATURE_RANGE = 40;
 
 
 

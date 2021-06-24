@@ -1,0 +1,5 @@
+lslidar_c16_driver_node:
+    ros__parameters:
+        device_ip: 192.168.1.200
+        frame_id: lslidar
+

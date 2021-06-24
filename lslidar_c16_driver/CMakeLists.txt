@@ -1,78 +1,86 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5)
 project(lslidar_c16_driver)
 
-add_compile_options(-std=c++11)
-set(CMAKE_BUILD_TYPE Release)#RelWithDebInfo
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
-set(${PROJECT_NAME}_CATKIN_DEPS
-    angles
-    pcl_ros
-    roscpp
-    sensor_msgs
-    tf
-    dynamic_reconfigure
-    lslidar_c16_msgs
-    nodelet
-)
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
 
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+find_package(ament_cmake_ros REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
+find_package(diagnostic_updater REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(lslidar_c16_msgs REQUIRED)
+
+# libpcap provides no pkg-config or find_package module:
 set(libpcap_LIBRARIES -lpcap)
 
-find_package(catkin REQUIRED COMPONENTS
-	${${PROJECT_NAME}_CATKIN_DEPS}
-        pcl_conversions
-        rospy
-	std_msgs
-        genmsg
-        cv_bridge
-        message_generation
-)
-
-find_package(Boost COMPONENTS signals)
-find_package(Boost REQUIRED COMPONENTS thread)
-find_package(PkgConfig REQUIRED)
-
-
-include_directories(
-		include
-		${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS}
-	${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake)
-
-
-catkin_package(
-    CATKIN_DEPENDS ${${PROJECT_NAME}_CATKIN_DEPS}
-    CATKIN_DEPENDS message_runtime std_msgs
-    )
-
+include_directories(include)
 
 add_library(lslidar_input src/input.cc)
 target_link_libraries(lslidar_input
-		${catkin_LIBRARIES}
-		${libpcap_LIBRARIES})
+    ${libpcap_LIBRARIES})
+ament_target_dependencies(lslidar_input
+  rclcpp
+  lslidar_c16_msgs
+)
 
 add_library(lslidar_c16_driver src/lslidar_c16_driver.cpp)
-
+ament_target_dependencies(lslidar_c16_driver
+  diagnostic_msgs
+  diagnostic_updater
+  rclcpp
+  rclcpp_components
+  tf2_ros
+  lslidar_c16_msgs
+)
 target_link_libraries(lslidar_c16_driver
-		lslidar_input
-		${catkin_LIBRARIES})
-
-# build the nodelet version
-add_library(lslidar_c16_driver_nodelet src/lslidar_c16_nodelet.cc src/lslidar_c16_driver.cpp)
-target_link_libraries(lslidar_c16_driver_nodelet
-		lslidar_input
-		${catkin_LIBRARIES}
-		)
+  lslidar_input)
 
 add_executable(lslidar_c16_driver_node src/lslidar_c16_driver_node.cpp)
+ament_target_dependencies(lslidar_c16_driver_node
+  rclcpp
+)
+target_link_libraries(lslidar_c16_driver_node
+    lslidar_c16_driver
+    lslidar_input
+    ${libpcap_LIBRARIES}
+    )
 
-if(catkin_EXPORTED_TARGETS)
-	add_dependencies(lslidar_input ${catkin_EXPORTED_TARGETS})
+# install runtime and library files
+install(TARGETS lslidar_c16_driver
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+install(TARGETS lslidar_c16_driver_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(TARGETS lslidar_input
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+rclcpp_components_register_nodes(lslidar_c16_driver
+  "lslidar_c16_driver::lslidarDriver")
+
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION include/${PROJECT_NAME})
+
+install(DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME})
+# install(PROGRAMS src/vdump
+#   DESTINATION lib/${PROJECT_NAME})
+
+ament_export_include_directories(include)
+ament_export_libraries(lslidar_c16_driver)
+
+if(BUILD_TESTING)
 endif()
 
-target_link_libraries(lslidar_c16_driver_node
-		lslidar_c16_driver
-		lslidar_input
-		${catkin_LIBRARIES}
-		${libpcap_LIBRARIES}
-		)
+ament_package()

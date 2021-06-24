@@ -18,45 +18,47 @@
 #ifndef _CONVERT_H_
 #define _CONVERT_H_
 
-#include <sensor_msgs/PointCloud2.h>
-#include <sensor_msgs/LaserScan.h>
-#include <dynamic_reconfigure/server.h>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
 #include "rawdata.h"
-#include <sensor_msgs/TimeReference.h>
+#include <sensor_msgs/msg/time_reference.hpp>
 
 namespace lslidar_c16_decoder {
-    class Convert {
+    class Convert final : public rclcpp::Node{
     public:
-        Convert(ros::NodeHandle node, ros::NodeHandle private_nh);
-
-        ~Convert() {
-        }
+        explicit Convert(const rclcpp::NodeOptions & options);
+        ~Convert() override {}
+        Convert(Convert && c) = delete;
+        Convert & operator=(Convert && c) = delete;
+        Convert(const Convert & c) = delete;
+        Convert & operator=(const Convert & c) = delete;
 
     private:
 
-        void processScan(const lslidar_c16_msgs::LslidarC16ScanUnified::ConstPtr &scanMsg);
+        void processScan(const lslidar_c16_msgs::msg::LslidarC16ScanUnified::ConstPtr scanMsg);
 
-        void timeSync(const sensor_msgs::TimeReferenceConstPtr &time_msg);
+        void timeSync(const sensor_msgs::msg::TimeReference::ConstPtr time_msg);
         /// Pointer to dynamic reconfigure service srv_
-        void publishScan(lslidar_c16_msgs::LslidarC16SweepPtr& sweepData, int scanNum);
+        void publishScan(lslidar_c16_msgs::msg::LslidarC16Sweep::SharedPtr sweepData, int scanNum);
 
-        boost::shared_ptr<lslidar_rawdata::RawData> data_;
-        ros::Subscriber packet_sub_;
-        ros::Subscriber sync_sub_;
-        ros::Time global_time;
+        std::shared_ptr<lslidar_rawdata::RawData> data_;
+        rclcpp::Subscription<lslidar_c16_msgs::msg::LslidarC16ScanUnified>::SharedPtr packet_sub_;
+        rclcpp::Subscription<sensor_msgs::msg::TimeReference>::SharedPtr sync_sub_;
+        rclcpp::Time global_time;
         double last_time;
-        lslidar_c16_msgs::LslidarC16ScanUnifiedPtr scan_recv;
-        lslidar_c16_msgs::LslidarC16SweepPtr sweep_data;
+        lslidar_c16_msgs::msg::LslidarC16ScanUnified::SharedPtr scan_recv;
+        lslidar_c16_msgs::msg::LslidarC16Sweep::SharedPtr sweep_data;
         bool scan_start;
         bool publish_scan;
         int scan_num;
         std::string scan_frame_id;
         size_t scan_nums;
         bool time_synchronization_;
-        ros::Publisher output_;
-        ros::Publisher scan_pub;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr output_;
+        rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub;
         std::vector<int> indices;
     };
 
 }  // namespace lslidar_c16_decoder
+
 #endif
